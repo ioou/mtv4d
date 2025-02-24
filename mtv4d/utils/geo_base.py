@@ -15,3 +15,12 @@ def transform_pts_with_T(points, T):
     points = points.reshape(-1, 3)
     points_output = (to_homo(points) @ T.T)[:, :3].reshape(*shape)
     return points_output
+
+def Rt2T(R, t):
+    T = np.eye(4)
+    T[:3, :3] = R
+    T[:3, 3] = t
+    return T
+
+def T2Rt(T):
+    return T[:3, :3], T[:3, 3]

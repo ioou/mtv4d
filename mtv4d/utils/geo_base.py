@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 
 def to_homo(points: np.array) -> np.array:
@@ -24,3 +25,11 @@ def Rt2T(R, t):
 
 def T2Rt(T):
     return T[:3, :3], T[:3, 3]
+
+def rotation_to_wxyz(rot):
+    R = np.array(rot).reshape(3, 3)
+    return Rotation.from_matrix(R).as_quat(scalar_first=True).tolist()  # wxyz, default False
+
+def rotation_to_xyzw(rot):
+    R = np.array(rot).reshape(3, 3)
+    return Rotation.from_matrix(R).as_quat(scalar_first=False).tolist()

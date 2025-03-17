@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='mtv4d',
-    version='0.1.4',
+    version='0.1.5',
     packages=find_packages(exclude=['*scripts*']),
     description='A 4d data sdk',
     long_description=open('README.md').read(),

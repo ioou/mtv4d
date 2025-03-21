@@ -16,6 +16,11 @@ import copy
 6 others: pcddet box 
 """
 
+def fbbox_to_box9d(box):
+    p = box['translation']
+    s = box['size']
+    r = Rotation.from_matrix(box['rotation']).as_euler("XYZ")
+    return list(p) + list(s) + list(r)
 
 def to_corners_7(pts):
     """

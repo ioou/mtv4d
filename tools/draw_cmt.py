@@ -1,17 +1,24 @@
 from pathlib import Path as P
 import numpy as np
 from scipy.spatial.transform import Rotation
+from tqdm import tqdm
 
 from mtv4d.utils.geo_base import transform_pts_with_T, Rt2T
 from mtv4d.utils.draw_base import draw_boxes
 from mtv4d.annos_4d.misc import read_ego_paths
 from mtv4d.utils.box_base import to_corners_9
 from mtv4d.utils.io_base import read_json, read_pickle
-from mtv4d.utils.sensors import get_camera_models
+from mtv4d.utils.sensors import get_camera_models, FisheyeCameraModel
 from mtv4d.utils.calib_base import read_cal_data
 import cv2
+import argparse
+import os.path as op
 
-if __name__ == "__main__":
+parser = argparse.ArgumentParser()
+parser.add_argument("--mode")
+
+
+def main():
     import os.path as op
 
     data_root = "/ssd4/tmp/1"
@@ -27,7 +34,7 @@ if __name__ == "__main__":
     Twes, _ = read_ego_paths(op.join(scene_root, f"trajectory.txt"))
     scene_infos = read_pickle(f"{data_root}/mv_4d_infos_{scene_id}.pkl")[scene_id]
     Tes_f = Rt2T(scene_infos['scene_info']['calibration'][sensor]['extrinsic'][0],
-                    scene_infos['scene_info']['calibration'][sensor]['extrinsic'][1])
+                 scene_infos['scene_info']['calibration'][sensor]['extrinsic'][1])
     Tse_f = np.linalg.inv(Tes_f)
     Tse_r = calib[sensor]['T_se']
 
@@ -35,11 +42,9 @@ if __name__ == "__main__":
     T_fr[:3, :3] = Rotation.from_euler('z', [-np.pi / 2]).as_matrix()
     T_rf = np.linalg.inv(T_fr)
 
-
     def to_1(rotation):
         xyz = Rotation.from_matrix(np.array(rotation).reshape(3, 3)).as_euler("XYZ")
         return xyz.tolist()
-
 
     def f2r_list(box):
         Tf_box = np.eye(4)
@@ -52,7 +57,6 @@ if __name__ == "__main__":
         translation = Tr_box[:3, 3]
         return list(translation) + list(box['scale'].values()) + list(rotation)
 
-
     for ts in timestamps[200:250]:
         cmt_path = f"{cmt_pred_dir}/{ts}.json"
         a = read_json(cmt_path)
@@ -64,13 +68,11 @@ if __name__ == "__main__":
 
             boxes = read_json(cmt_path)
 
-
             def box_to_list(box):
                 output = list(box['psr']['position'].values()) + list(box['psr']['scale'].values()) + list(
                     box['psr']['rotation'].values())
                 return output
                 # return box_psr['position'] + box_psr['scale'] + box_psr['rotation']
-
 
             box9d = [box_to_list(box_psr) for box_psr in boxes if
                      'class.vehicle.passenger_car' == box_psr['obj_type'] and max(
@@ -81,7 +83,7 @@ if __name__ == "__main__":
             Tsw = Tse_r @ Tew
             corners3d = transform_pts_with_T(corners, Tse).reshape(-1, 3)
             corners2d = camera_model.project_points(corners3d)
-        elif False:  # front-left-up    
+        elif False:  # front-left-up
             fb = "/home/yuanshiwei/4/prefusion/infer_results/pred_dumps/dets/20231104_170321"
             fb_path = f"{fb}/{ts}.json"
             data = read_json(fb_path)['pred']['bboxes']
@@ -98,7 +100,7 @@ if __name__ == "__main__":
             corners = np.array([to_corners_9(np.array(i)) for i in box9d])  # ego_base -> camera
             corners3d = transform_pts_with_T(corners, Tse_r).reshape(-1, 3)
             corners2d = camera_model.project_points(corners3d)
-        elif False:
+        elif False:  # output right-front-up
             psr = {
                 'position': [-22.7799, -0.888688, 0.680343],
                 "rotation": [-0.005630966435722584, -0.007195778542323339, 2.2345830262983197],
@@ -114,7 +116,7 @@ if __name__ == "__main__":
             # a = [4.75924, 2.02294, 1.55872, -26.214, 1.97311, 0.62196, -0.00570381, -0.000713125, 0.773904, 0.633276]
             rotation = Rotation.from_quat([-0.00570381, -0.000713125, 0.773904, 0.633276]).as_euler("XYZ").tolist()
 
-            box9d = [[-26.214, 1.97311, 0.62196]+ [4.75924, 2.02294, 1.55872] + rotation]
+            box9d = [[-26.214, 1.97311, 0.62196] + [4.75924, 2.02294, 1.55872] + rotation]
             corners = np.array([to_corners_9(np.array(i)) for i in box9d])  # ego_base -> camera
 
             corners3d = transform_pts_with_T(corners, Tse_r @ Tew).reshape(-1, 3)
@@ -123,3 +125,57 @@ if __name__ == "__main__":
         cv2.imwrite(f'/tmp/1234/5/{ts}.jpg', im)
         # import matplotlib.pyplot as plt
         # plt.imshow(im), plt.show()
+
+
+def fbbox_to_box9d(box):
+    p = box['translation']
+    s = box['size']
+    r = Rotation.from_matrix(box['rotation']).as_euler("XYZ")
+    return list(p) + list(s) + list(r)
+
+
+def fbbox_filter_dist_class(box, class_list=None, dist_thres=None):
+    # default not filter
+    if class_list is not None and box['class'] not in class_list:
+        return False
+    if dist_thres is not None and max(box['translation']) < dist_thres:
+        return False
+    return True
+
+def draw_pickle_cmt():
+    path = "val_indice.pkl"
+
+# todo: mp_pool -> 30s; cat 4 images to one image
+def draw_pickle_fb(pickle_path, data_root, draw_class_list=None, THRES_dist_to_ego=None):
+    sensors = ["camera1", "camera5", "camera8", "camera11"]
+    sensor_id = sensors[2]
+    a = read_pickle(pickle_path)
+    for scene_id, infos in tqdm(a.items()):
+        calib = infos['scene_info']['calibration']
+        T_es = Rt2T(calib[sensor_id]['extrinsic'][0], calib[sensor_id]['extrinsic'][1])
+        T_se = np.linalg.inv(T_es)
+        camera_model = FisheyeCameraModel.from_intrinsic_array(calib[sensor_id]['intrinsic'], sensor_id)
+        for ts, data in infos['frame_info'].items():
+            box_info, poly_info = data['3d_boxes'], data['3d_polylines']
+            box_filtered = [box for box in box_info if fbbox_filter_dist_class(box, draw_class_list, THRES_dist_to_ego)]
+            box9d, box_class_names = [fbbox_to_box9d(box) for box in box_filtered], [box['class'] for box in box_filtered]
+            corners = np.array([to_corners_9(np.array(i)) for i in box9d])  # ego_base -> camera
+            corners3d = transform_pts_with_T(corners, T_se).reshape(-1, 3)
+            corners2d = camera_model.project_points(corners3d)
+            im = cv2.imread(op.join(data_root, data['camera_image'][sensor_id]))
+            im = draw_boxes(im, corners2d)
+            if False:  # draw label
+                [cv2.putText(im, f'{idx}_{text.split(".")[-1]}', tuple(box[:2].astype('int')), 1, 1, (255, 0, 0))
+                 for idx, (box, text) in enumerate(zip(corners2d.reshape(-1, 8), box_class_names))]
+            save_path = f"/tmp/1234/fb/{sensor_id}_{scene_id}_{ts}.jpg"
+            P(save_path).parent.mkdir(exist_ok=True, parents=True)
+            cv2.imwrite(save_path, im)
+
+
+
+
+if __name__ == "__main__":
+    # main()
+    pickle_path = "/ssd1/4d_val_data/val_indice.pkl"
+    data_root = '/ssd1/4d_val_data'
+    draw_pickle_fb(pickle_path, data_root)

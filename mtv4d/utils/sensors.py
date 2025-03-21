@@ -105,20 +105,17 @@ class FisheyeCameraModel:
 
     @classmethod
     def from_intrinsic_array(cls, intrinsic, camera_id):
-        # fisheye camera; usually the intrinsic array contains 7 words
-        # intrinsic = [965.4158113475025,520.1966103766614,469.48876980550966,469.83770842397064,
-        #              0.057245580966242486,-0.01232397789444156,0.0025930032838253525,-0.0007072882057509018]
-        calib = {"rig":{
-            camera_id:{
-                "pp":intrinsic[:2],
-                "focal":intrinsic[2:4],
-                "inv_poly":intrinsic[4:8],
-                "image_size":[1920,1080],
-                "fov_fit":200,
+        """fisheye camera; usually the intrinsic array contains 8 number"""
+        calib = {"rig": {
+            camera_id: {
+                "pp": intrinsic[:2],
+                "focal": intrinsic[2:4],
+                "inv_poly": intrinsic[4:8],
+                "image_size": [1920, 1080],
+                "fov_fit": 200,
             }
         }}
         return FisheyeCameraModel(calib, camera_id)
-
 
     @staticmethod
     def fit_unproj_func(p0, p1, p2, p3, fov=200):
@@ -231,6 +228,12 @@ def get_camera_models(calib_path, cameras=None):
     calib = Calibration.from_path(calib_path)
     cameras = [s for s in calib._data['rig'].keys() if 'cam' in s] if cameras is None else cameras
     camera_models = {cam_id: FisheyeCameraModel(calib._data, cam_id) for cam_id in cameras}
+    return camera_models
+
+
+def get_camera_models_from_intrinsic_array(array_dict, cameras=None):
+    cameras = list(array_dict.keys()) if cameras is None else cameras
+    camera_models = {cam_id: FisheyeCameraModel.from_intrinsic_array(array_dict[cam_id]) for cam_id in cameras}
     return camera_models
 
 

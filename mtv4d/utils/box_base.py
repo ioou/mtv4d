@@ -15,6 +15,11 @@ import copy
 5 9points
 6 others: pcddet box 
 """
+def jsonbox_to_box9d(box):
+    p = box['pos_xyz']
+    s = box['scale_xyz']
+    r = box['rot_xyz']
+    return list(p) + list(s) + list(r)
 
 def fbbox_to_box9d(box):
     p = box['translation']

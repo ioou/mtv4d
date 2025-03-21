@@ -4,6 +4,7 @@ from scipy.spatial.transform import Rotation
 from tqdm import tqdm
 
 from mtv4d.utils.geo_base import transform_pts_with_T, Rt2T
+from mtv4d.utils.box_base import fbbox_to_box9d, jsonbox_to_box9d
 from mtv4d.utils.draw_base import draw_boxes
 from mtv4d.annos_4d.misc import read_ego_paths
 from mtv4d.utils.box_base import to_corners_9
@@ -127,13 +128,6 @@ def main():
         # plt.imshow(im), plt.show()
 
 
-def fbbox_to_box9d(box):
-    p = box['translation']
-    s = box['size']
-    r = Rotation.from_matrix(box['rotation']).as_euler("XYZ")
-    return list(p) + list(s) + list(r)
-
-
 def fbbox_filter_dist_class(box, class_list=None, dist_thres=None):
     # default not filter
     if class_list is not None and box['class'] not in class_list:
@@ -142,8 +136,10 @@ def fbbox_filter_dist_class(box, class_list=None, dist_thres=None):
         return False
     return True
 
+
 def draw_pickle_cmt():
     path = "val_indice.pkl"
+
 
 # todo: mp_pool -> 30s; cat 4 images to one image
 def draw_pickle_fb(pickle_path, data_root, draw_class_list=None, THRES_dist_to_ego=None):
@@ -158,24 +154,67 @@ def draw_pickle_fb(pickle_path, data_root, draw_class_list=None, THRES_dist_to_e
         for ts, data in infos['frame_info'].items():
             box_info, poly_info = data['3d_boxes'], data['3d_polylines']
             box_filtered = [box for box in box_info if fbbox_filter_dist_class(box, draw_class_list, THRES_dist_to_ego)]
-            box9d, box_class_names = [fbbox_to_box9d(box) for box in box_filtered], [box['class'] for box in box_filtered]
+            box9d, box_class_names = [fbbox_to_box9d(box) for box in box_filtered], [box['class'] for box in
+                                                                                     box_filtered]
             corners = np.array([to_corners_9(np.array(i)) for i in box9d])  # ego_base -> camera
             corners3d = transform_pts_with_T(corners, T_se).reshape(-1, 3)
             corners2d = camera_model.project_points(corners3d)
             im = cv2.imread(op.join(data_root, data['camera_image'][sensor_id]))
             im = draw_boxes(im, corners2d)
             if False:  # draw label
-                [cv2.putText(im, f'{idx}_{text.split(".")[-1]}', tuple(box[:2].astype('int')), 1, 1, (255, 0, 0))
-                 for idx, (box, text) in enumerate(zip(corners2d.reshape(-1, 8), box_class_names))]
+                for idx, (box, text) in enumerate(zip(corners2d.reshape(-1, 8), box_class_names)):
+                    cv2.putText(im, f'{idx}_{text.split(".")[-1]}', tuple(box[:2].astype('int')), 1, 1, (255, 0, 0))
             save_path = f"/tmp/1234/fb/{sensor_id}_{scene_id}_{ts}.jpg"
             P(save_path).parent.mkdir(exist_ok=True, parents=True)
             cv2.imwrite(save_path, im)
+
+
+def is_box(obj_dict):
+    return obj_dict['geometry_type'] == 'box3d'
+
+def is_poly(obj_dict):
+    return obj_dict['geometry_type'] == 'polyline3d'
+
+def draw_pickle_4djson(json_path, data_root, draw_class_list=None):
+    scene_id = P(json_path).parent.parent.name
+    scene_root = op.join(data_root, scene_id)
+    sensors = ["camera1", "camera5", "camera8", "camera11"]
+    sensor_id = sensors[2]
+    data = read_json(json_path)
+    timestamps = [i['timestamp'] for i in data[0]['ts_list_of_dict']]
+    data_boxes = [box for box in data if is_box(box) and fbbox_filter_dist_class(box, draw_class_list, None)]
+    boxes, box_labels = [box['geometry'] for box in data_boxes], [box['obj_type'] for box in data_boxes]
+    data_polylines = [poly for poly in data if is_poly(poly)]
+    polys, poly_labels = [poly['geometry'] for poly in data_polylines], [poly['geometry'] for poly in data_polylines]
+    Twes, _ = read_ego_paths(P(scene_root)/'trajectory.txt')
+    calib_path = str(P(scene_root)/'calibration_center.yml')
+    calib = read_cal_data(calib_path)
+    camera_model = get_camera_models(calib_path)[sensor_id]
+    for ts in timestamps:
+        T_sw = calib[sensor_id]['T_se'] @ np.linalg.inv(Twes[float(ts)])
+        box9d, box_class_names = [jsonbox_to_box9d(box) for box in boxes], box_labels
+        corners = np.array([to_corners_9(np.array(i)) for i in box9d])  # ego_base -> camera
+        corners3d = transform_pts_with_T(corners, T_sw).reshape(-1, 3)
+        corners2d = camera_model.project_points(corners3d)
+        im = cv2.imread(op.join(scene_root, f'camera/{sensor_id}/{int(ts)}.jpg'))
+        im = draw_boxes(im, corners2d)
+        if False:  # draw label
+            for idx, (box, text) in enumerate(zip(corners2d.reshape(-1, 8), box_class_names)):
+                cv2.putText(im, f'{idx}_{text.split(".")[-1]}', tuple(box[:2].astype('int')), 1, 1, (255, 0, 0))
+        save_path = f"/tmp/1234/4djson/{sensor_id}_{scene_id}_{ts}.jpg"
+        P(save_path).parent.mkdir(exist_ok=True, parents=True)
+        cv2.imwrite(save_path, im)
 
 
 
 
 if __name__ == "__main__":
     # main()
-    pickle_path = "/ssd1/4d_val_data/val_indice.pkl"
-    data_root = '/ssd1/4d_val_data'
-    draw_pickle_fb(pickle_path, data_root)
+
+    # pickle_path = "/ssd1/4d_val_data/val_indice.pkl"
+    # data_root = '/ssd1/4d_val_data'
+    # draw_pickle_fb(pickle_path, data_root)
+
+    json_path = "/ssd1/tmp/20231104_170321_1699088601564_1699088721564/4d_anno_infos/annos.json"
+    data_root = "/ssd1/tmp/"
+    draw_pickle_4djson(json_path, data_root)

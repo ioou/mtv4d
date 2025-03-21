@@ -124,21 +124,4 @@ def read_Tel_from_yaml_file(yaml_file):
     return T
 
 
-def transform_pts_with_T(points: np.ndarray, ego_to_lidar: np.ndarray) -> np.ndarray:
-    points = np.concatenate([points, np.ones(points.shape[0])[:, None]], axis=1)
-    camera_coords = points @ ego_to_lidar.T
-    return camera_coords[:, :3]
-
-
-def change_lidar_to_ego(pts):
-    """
-    Args:
-        pts (np N*3): 输入3d点 在ego系
-    output:
-        pts: np N*3, ego系
-    """
-    scene_root = '/ssd1/data/4d/20230823_110018'  
-    T_es = read_Tel_from_yaml_file(op.join(scene_root, "calibration.yml"))  
-    pts_ego = transform_pts_with_T(pts, T_es)  
-    return pts_ego
 

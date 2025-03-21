@@ -1,18 +1,17 @@
 import sys
+
 sys.path.append('.')
-import os.path as op
 from easydict import EasyDict
 import yaml
 import numpy as np
 from scipy.spatial.transform import Rotation
+
 
 def format_cal_data(cal_data):
     """
     generate extrinsic mat, camera intrinsic mat and distort coefficient
     """
     sids = list(cal_data.keys())
-    # if 'cam_bev' in sids:
-    #     sids.remove('cam_bev')
     for sid in sids:
         if "cameras" in cal_data[sid]["sensor_model"]:
             if not "muzza" in cal_data[sid]["sensor_model"].lower():  # only support opencv model
@@ -53,37 +52,6 @@ def read_cal_data(yaml_file):
     return cal_data
 
 
-def format_cal_data(cal_data):
-    """
-    generate extrinsic mat, camera intrinsic mat and distort coefficient
-    """
-    sids = list(cal_data.keys())
-    for sid in sids:
-        if "cameras" in cal_data[sid]["sensor_model"]:
-            if not "muzza" in cal_data[sid]["sensor_model"].lower():  # only support opencv model
-                focal = cal_data[sid]["focal"]
-                pp = cal_data[sid]["pp"]
-                K = np.eye(3)
-                if isinstance(focal, list):
-                    K[0, 0], K[1, 1] = focal
-                else:
-                    K[0, 0], K[1, 1] = focal, focal
-                K[0, 2], K[1, 2] = pp
-                cal_data[sid]["K"] = K
-                if "inv_poly" in cal_data[sid].keys():
-                    cal_data[sid]["D"] = np.array(cal_data[sid]["inv_poly"])
-        if "extrinsic" in cal_data[sid].keys():
-            tx, ty, tz, qx, qy, qz, qw = cal_data[sid]["extrinsic"]
-            T = np.eye(4)
-            q = Rotation.from_quat([qx, qy, qz, qw])
-            if hasattr(q, "as_dcm"):
-                T[:3, :3] = q.as_dcm().astype("float32")
-            else:
-                T[:3, :3] = q.as_matrix().astype("float32")
-            T[:3, 3] = np.array([tx, ty, tz])
-            cal_data[sid]["T_es"] = T
-            cal_data[sid]["T_se"] = np.linalg.inv(T)
-
 def read_ego_paths(trajectory_path):
     def to_rotation(data):
         t = data[:3]
@@ -97,13 +65,6 @@ def read_ego_paths(trajectory_path):
     out_dict = {i[0]: to_rotation(i[1:8]) for i in a}
     timestamps = np.array(sorted(out_dict.keys()))
     return out_dict, timestamps
-
-
-import os.path as op
-from easydict import EasyDict
-import yaml
-import numpy as np
-from scipy.spatial.transform import Rotation
 
 
 def read_Tel_from_yaml_file(yaml_file):
@@ -122,6 +83,3 @@ def read_Tel_from_yaml_file(yaml_file):
         T[:3, :3] = q.as_matrix().astype("float32")
     T[:3, 3] = np.array([tx, ty, tz])
     return T
-
-
-

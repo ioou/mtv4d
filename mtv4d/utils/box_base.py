@@ -15,17 +15,21 @@ import copy
 5 9points
 6 others: pcddet box 
 """
+
+
 def jsonbox_to_box9d(box):
     p = box['pos_xyz']
     s = box['scale_xyz']
     r = box['rot_xyz']
     return list(p) + list(s) + list(r)
 
+
 def fbbox_to_box9d(box):
     p = box['translation']
     s = box['size']
     r = Rotation.from_matrix(box['rotation']).as_euler("XYZ")
     return list(p) + list(s) + list(r)
+
 
 def to_corners_7(pts):
     """
@@ -186,6 +190,41 @@ def box_vec7_to_psr(vec7):
         },
         "rotation": {"x": 0, "y": 0, "z": vec7[6]},
     }
+
+
+def box_vec9_to_psr(vec9):
+    return {
+        "position": {
+            "x": vec9[0],
+            "y": vec9[1],
+            "z": vec9[2],
+        },
+        "scale": {
+            "x": vec9[3],
+            "y": vec9[4],
+            "z": vec9[5],
+        },
+        "rotation": {
+            "x": vec9[6],
+            "y": vec9[7],
+            "z": vec9[8]},
+    }
+
+
+def box_vec7_to_Ts(vec7):
+    p = vec7[:3]
+    s = vec7[3:6]
+    r = vec7[6]
+    T = np.eye(4)
+    T[:3, :3] = Rotation.from_euler('z', r).as_matrix()
+    T[:3, 3] = p
+    return T, s
+
+
+def box_Ts_to_vec9(T, s):
+    return T[:3, 3].tolist() + list(s) + Rotation.from_matrix(T[:3, :3]).as_euler('XYZ').tolist()
+
+
 def frame_box_to_psr(box):
     return {
         "position": {
@@ -194,14 +233,14 @@ def frame_box_to_psr(box):
             "z": box['pos_xyz'][2],
         },
         "scale": {
-            "x":  box['scale_xyz'][0],
-            "y":  box['scale_xyz'][1],
-            "z":  box['scale_xyz'][2],
+            "x": box['scale_xyz'][0],
+            "y": box['scale_xyz'][1],
+            "z": box['scale_xyz'][2],
         },
         "rotation": {
-            "x":  box['rot_xyz'][0],
-            "y":  box['rot_xyz'][1],
-            "z":  box['rot_xyz'][2],
+            "x": box['rot_xyz'][0],
+            "y": box['rot_xyz'][1],
+            "z": box['rot_xyz'][2],
         },
     }
 
@@ -227,9 +266,11 @@ def translate_psr_with_T(psr, Tts):
     }
     return new_psr
 
+
 def box_corners_to_dot_cloud(corners):
     # 保证是3维度的点
     assert np.array(corners).shape[-1] == 3
+
     def get_lines(box):
         output = []
         for i, j in [
@@ -247,8 +288,9 @@ def box_corners_to_dot_cloud(corners):
             [box[3], box[3 + 4]],
         ]:
             for n in range(100):
-                n = n/100
-                output += [i *(1-n) + j *n]
+                n = n / 100
+                output += [i * (1 - n) + j * n]
         return output
+
     box_points = np.array([get_lines(i) for i in corners.reshape(-1, 8, 3)]).reshape(-1, 3)
     return box_points

@@ -80,7 +80,7 @@ def read_points_from_pcd(lidar_path):
     return lidar_points
 
 
-def read_pcd(path, intensity) -> np.ndarray:
+def read_pypcd(path, intensity) -> np.ndarray:
     """read pcd file
 
     Parameters
@@ -96,13 +96,32 @@ def read_pcd(path, intensity) -> np.ndarray:
         - if intensity is false, return (N, 3) array, i.e. [[x,y,z], ...]
         - if intensity is true, return (N, 4) array, i.e. [[x,y,z,intensity], ...]
     """
-    import pypcd
+    from pypcd_imp import pypcd
     pcd = pypcd.PointCloud.from_path(path)
     npdata = np.stack([pcd.pc_data['x'], pcd.pc_data['y'], pcd.pc_data['z']], axis=1)
     if intensity:
         npdata = np.concatenate([npdata, pcd.pc_data['intensity'].reshape(-1, 1)], axis=1)
     return npdata
 
+def write_pypcd(npdata, pcd_save_path):
+    from pypcd_imp import pypcd
+    pc_data = np.array(
+        [(0, 0, 0, 18), (0.5, -1.5, 2.5, 50)], dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('intensity', '<f4')]
+    )
+    metadata = {
+        'version': 0.7,
+        'fields': ['x', 'y', 'z', 'intensity'],
+        'size': [4, 4, 4, 4],
+        'type': ['F', 'F', 'F', 'F'],
+        'count': [1, 1, 1, 1],
+        'width': 2,
+        'height': 1,
+        'viewpoint': [0, 0, 0, 1],
+        'points': 2,
+        'data': 'binary',
+    }
+    pcd = pypcd.PointCloud(metadata, pc_data)
+    pcd.save_pcd(str(pcd_save_path), compression='binary')
 
 def read_points_from_bin(path):
     return np.fromfile(str(path), dtype='float32').reshape(-1, 4)

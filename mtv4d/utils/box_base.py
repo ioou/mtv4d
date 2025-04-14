@@ -24,10 +24,17 @@ def jsonbox_to_box9d(box):
     return list(p) + list(s) + list(r)
 
 
+def lfcjson_to_box9d(box):
+    p = box['translation']
+    s = box['size']
+    r = Rotation.from_quat(box['rotation']).as_euler("XYZ")
+    return list(p) + list(s) + list(r)
+
+
 def fbbox_to_box9d(box):
     p = box['translation']
     s = box['size']
-    r = Rotation.from_matrix(box['rotation']).as_euler("XYZ")
+    r = Rotation.from_matrix(box['rotation'], scalar_first=True).as_euler("XYZ")
     return list(p) + list(s) + list(r)
 
 

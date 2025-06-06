@@ -4,7 +4,7 @@ from scipy.spatial.transform import Rotation
 from tqdm import tqdm
 
 from mtv4d.utils.geo_base import transform_pts_with_T, Rt2T
-from mtv4d.utils.box_base import fbbox_to_box9d, jsonbox_to_box9d
+from mtv4d.utils.box_base import fbbox_to_box9d, jsonbox_to_box9d, transform_psr_to_array
 from mtv4d.utils.draw_base import draw_boxes
 from mtv4d.annos_4d.misc import read_ego_paths
 from mtv4d.utils.box_base import to_corners_9
@@ -14,9 +14,87 @@ from mtv4d.utils.calib_base import read_cal_data
 import cv2
 import argparse
 import os.path as op
+import mtv4d
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--mode")
+
+def draw_psr():
+    # path = '/ssd1/tmp/20250322_164802_1742633283264_1742633403364/fb_label/combined_infer_label'
+    path = '/tmp/1234/1'
+    a = sorted(P(path).glob('*.json'))
+    sensor_id = 'camera8'
+    calib_path = "/ssd1/tmp/20250322_164802_1742633283264_1742633403364/calibration_center.yml"
+    calib = read_cal_data(calib_path)
+    Tse = calib[sensor_id]['T_se']
+    camera_model = get_camera_models(calib_path, [sensor_id])[sensor_id]
+    R = Rotation.from_euler('z', 90, degrees=True).as_matrix()
+    T = np.eye(4)
+    T[:3, :3] = R
+    for i in a:
+        ts = i.stem
+        im = cv2.imread(f'/ssd1/tmp/20250322_164802_1742633283264_1742633403364/camera/{sensor_id}/{ts}.jpg')
+        labels = mtv4d.read_json(str(i))
+        box9d = [transform_psr_to_array(i['psr']) for i in labels if 'psr' in i]
+        corners = np.array([to_corners_9(np.array(i)) for i in box9d])  # ego_base -> camera
+        corners3d = transform_pts_with_T(corners, Tse @ T ).reshape(-1, 3)  # qianzuoshang -> youqianshang
+        corners2d = camera_model.project_points(corners3d)  #
+        im = draw_boxes(im, corners2d)
+        cv2.imwrite(f'/tmp/1234/5/{ts}.jpg', im)
+
+
+def draw_slot():
+    # path = '/ssd1/tmp/20250322_164802_1742633283264_1742633403364/infer_results/poly_9_parkingslot/gt_pred_dumps/dets/20250322_164802_1742633283264_1742633403364'
+    path = '/tmp/1234/1'
+    a = sorted(P(path).glob('*.json'))
+    sensor_id = 'camera8'
+    calib_path = "/ssd1/tmp/20250322_164802_1742633283264_1742633403364/calibration_center.yml"
+    calib = read_cal_data(calib_path)
+    Tse = calib[sensor_id]['T_se']
+    camera_model = get_camera_models(calib_path, [sensor_id])[sensor_id]
+    R = Rotation.from_euler('z', 90, degrees=True).as_matrix()
+    T = np.eye(4)
+    T[:3, :3] = R
+    for i in a:
+        ts = i.stem
+        im = cv2.imread(f'/ssd1/tmp/20250322_164802_1742633283264_1742633403364/camera/{sensor_id}/{ts}.jpg')
+        labels = mtv4d.read_json(str(i))
+        points = [np.array(i['vertices']) for i in labels if 'vertices' in i]
+        corners = np.array([np.array(i) for i in points])  # ego_base -> camera
+        corners3d = transform_pts_with_T(corners, Tse @ T ).reshape(-1, 3)  # qianzuoshang -> youqianshang
+        corners2d = camera_model.project_points(corners3d)  #
+        draw_parkingslots(im, corners2d.reshape(-1, 4, 2))
+        cv2.imwrite(f'/tmp/1234/5/{ts}.jpg', im)
+def draw_poly():
+    # path = '/ssd1/tmp/20250322_164802_1742633283264_1742633403364/infer_results/poly_9_parkingslot/gt_pred_dumps/dets/20250322_164802_1742633283264_1742633403364'
+    path = '/tmp/1234/1'
+    a = sorted(P(path).glob('*.json'))
+    sensor_id = 'camera8'
+    calib_path = "/ssd1/tmp/20250322_164802_1742633283264_1742633403364/calibration_center.yml"
+    calib = read_cal_data(calib_path)
+    Tse = calib[sensor_id]['T_se']
+    camera_model = get_camera_models(calib_path, [sensor_id])[sensor_id]
+    R = Rotation.from_euler('z', 90, degrees=True).as_matrix()
+    T = np.eye(4)
+    T[:3, :3] = R
+    for i in a:
+        ts = i.stem
+        im = cv2.imread(f'/ssd1/tmp/20250322_164802_1742633283264_1742633403364/camera/{sensor_id}/{ts}.jpg')
+        labels = mtv4d.read_json(str(i))
+        if len(labels)==0: continue
+        points = [np.array(i['vertices']).reshape(-1, 3) for i in labels if 'vertices' in i]
+        corners = [np.array(i) for i in points]  # ego_base -> camera
+        corners3d = [transform_pts_with_T(i, Tse @ T ) for i in corners]  # qianzuoshang -> youqianshang
+        corners2d = [camera_model.project_points(i) for i in corners3d ]
+        draw_parkingslots(im, corners2d, 0)
+        cv2.imwrite(f'/tmp/1234/5/{ts}.jpg', im)
+
+
+def draw_parkingslots(im, points, close=True):
+    for pts in points:
+        cv2.polylines(im, [pts.astype('int')], close, (0, 0, 255), 2)
+
+
 
 
 def main():
@@ -296,32 +374,46 @@ def draw_pickle_4djson(json_path, data_root, draw_class_list=None):
 
 if __name__ == "__main__":
     # main()
+    if False:
+        draw_poly()
     if False:  # fb pickle
         # pickle_path = "/ssd1/MV4D_12V3L/20250315_153742_1742024382664_1742024467964/fb_fix_20250315_153742_1742024382664_1742024467964.pkl"
         pickle_path = "/ssd1/MV4D_12V3L/20231107_163857/fb_fix_20231107_163857.pkl"
         data_root = '/ssd1/MV4D_12V3L'
         draw_pickle_fb(pickle_path, data_root)
+
     if False:  # fb pickle, ps
         # pickle_path = "/ssd1/MV4D_12V3L/20250315_153742_1742024382664_1742024467964/fb_fix_20250315_153742_1742024382664_1742024467964.pkl"
         pickle_path = "/ssd1/MV4D_12V3L/20231107_163857/fb_fix_20231107_163857.pkl"
         data_root = '/ssd1/MV4D_12V3L'
         draw_pickle_fb_ps(pickle_path, data_root)
+
     if False:  # 4djson
         json_path = "/ssd1/tmp/20231104_170321_1699088601564_1699088721564/4d_anno_infos/annos.json"
         data_root = "/ssd1/tmp/"
         draw_pickle_4djson(json_path, data_root)
 
-    # if True:  # libo json
-    #     json_path = "/home/yuanshiwei/4/prefusion/work_dirs/borui_dets_71/gt_pred_dumps/dets"
-    #     data_root = '/ssd1/MV4D_12V3L'
-    #     draw_pickle_lfcjson(json_path, data_root)
+    if False:  # libo json
+        json_path = "/home/yuanshiwei/4/prefusion/work_dirs/borui_dets_71/gt_pred_dumps/dets"
+        data_root = '/ssd1/MV4D_12V3L'
+        draw_pickle_lfcjson(json_path, data_root)
 
     if False:  # frame json, not implemented
         json_path = '/ssd1/tmp/20231108_170321'
         data_root = '/ssd1/tmp'
         draw_pickle_frame_json(json_path, data_root)
 
-    if True:  # 4djson
+    if False:  # 4djson
         json_path = "/home/yuanshiwei/data/3dgs_demo3/4d_anno_infos/annos.json"
         data_root = '/home/yuanshiwei/data'
         draw_pickle_4djson(json_path, data_root)
+
+    if False:  # libo json
+        json_path = "/ssd1/tmp/20250322_164802_1742633283264_1742633403364/fb_label/bbox_1_heading"
+        data_root = '/ssd1/tmp'
+        draw_pickle_lfcjson(json_path, data_root)
+
+
+
+
+
